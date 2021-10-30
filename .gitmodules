@@ -1,0 +1,3 @@
+[submodule "submodules/neorv32"]
+	path = submodules/neorv32
+	url = git@github.com:stnolting/neorv32.git

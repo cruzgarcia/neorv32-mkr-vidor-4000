@@ -1,0 +1,16 @@
+{
+	"folders": [
+		{
+			"path": "hdl"
+		},
+		{
+			"path": "sim"
+		},
+		{
+			"path": "submodules"
+		},
+		{
+			"path": "syn"
+		}
+	]
+}
