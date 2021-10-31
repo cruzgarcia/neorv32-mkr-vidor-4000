@@ -168,18 +168,19 @@ set_location_assignment PIN_L8  -to gpio_o[6]
 set_location_assignment PIN_M10 -to gpio_o[7]
 
 # UART w/SAMD
-# set_location_assignment PIN_G16 -to bMKR_D[6]
-# set_location_assignment PIN_G15 -to bMKR_D[7]
 set_location_assignment PIN_C16 -to uart0_rxd_i
 set_location_assignment PIN_C15  -to uart0_txd_o
 set_instance_assignment -name IO_STANDARD "2.5 V" -to uart0_txd_o
 
-#set_location_assignment PIN_R9  -to flash_cs_o
-#set_location_assignment PIN_T13 -to flash_clk_o
-#set_location_assignment PIN_R12 -to flash_so
-#set_location_assignment PIN_A9  -to flash_si
-#set_location_assignment PIN_F13  -to flash_i02
-#set_location_assignment PIN_B9  -to flash_i03
+# Flash Interface is routed to dedicated pins
+set_location_assignment PIN_H1 -to flash_clk_o
+set_location_assignment PIN_D2 -to flash_cs_o
+set_location_assignment PIN_C1 -to flash_so
+set_location_assignment PIN_H2 -to flash_si
+set_location_assignment PIN_T7 -to flash_i02
+set_location_assignment PIN_R7 -to flash_i03
+
+
 
 #set_location_assignment PIN_R13 -to seven_segmnt_disp_o[6]
 #set_location_assignment PIN_P14 -to seven_segmnt_disp_o[5]
@@ -260,13 +261,6 @@ set_instance_assignment -name IO_STANDARD "2.5 V" -to uart0_txd_o
 # set_instance_assignment -name IO_STANDARD "2.5 V" -to panel_en
 # set_location_assignment PIN_L4  -to panel_en# 
 
-# # Flash interface
-# set_location_assignment PIN_C1  -to oFLASH_MOSI
-# set_location_assignment PIN_H2  -to iFLASH_MISO
-# set_location_assignment PIN_H1  -to oFLASH_SCK
-# set_location_assignment PIN_D2  -to oFLASH_CS
-# set_location_assignment PIN_R7 -to oFLASH_HOLD
-# set_location_assignment PIN_T7 -to oFLASH_WP# 
 
 # # interrupt pins
 # set_location_assignment PIN_N2 -to oSAM_INT

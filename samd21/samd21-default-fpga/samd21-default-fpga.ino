@@ -13,6 +13,11 @@ void setup_fpga()
   // Configure onboard LED Pin as output
   pinMode(LED_BUILTIN, OUTPUT);
 
+  // Enable clock to the FPGA, still causing some issues while programming with the USB Blaster
+  pinPeripheral(30, PIO_AC_CLK);
+  clockout(0, 1);
+  delay(1000);
+
   // Disable all JTAG Pins (useful for USB BLASTER connection)
   pinMode(TDO, INPUT);
   pinMode(TMS, INPUT);

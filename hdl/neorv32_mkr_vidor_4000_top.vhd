@@ -8,13 +8,13 @@ use neorv32.neorv32_package.all;
 
 entity neorv32_mkr_vidor_4000_top is
   generic (
-    CLOCK_FREQUENCY     : natural := 100_000_000;  -- clock frequency of clk_i in Hz
+    CLOCK_FREQUENCY     : natural := 48_000_000;  -- clock frequency of clk_i in Hz
     -- Internal Instruction memory (IMEM) --
-    MEM_INT_IMEM_EN     : boolean := false;     -- implement processor-internal instruction memory
-    MEM_INT_IMEM_SIZE   : natural := 8*1024;  -- size of processor-internal instruction memory in bytes
-    MEM_INT_DMEM_SIZE   : natural := 4*1024;    -- size of processor-internal data memory in bytes
+    MEM_INT_IMEM_EN     : boolean := TRUE;     -- implement processor-internal instruction memory
+    MEM_INT_IMEM_SIZE   : natural := 32*1024;  -- size of processor-internal instruction memory in bytes
+    MEM_INT_DMEM_SIZE   : natural := 8*1024;    -- size of processor-internal data memory in bytes
     -- External memory interface (WISHBONE)
-    MEM_EXT_EN          : boolean := true;   -- implement external memory bus interface?
+    MEM_EXT_EN          : boolean := FALSE;   -- implement external memory bus interface?
     MEM_EXT_TIMEOUT     : natural := 255;    -- cycles after a pending bus access auto-terminates (0 = disabled)
     MEM_EXT_PIPE_MODE   : boolean := false;  -- protocol: false=classic/standard wishbone mode, true=pipelined wishbone mode
     MEM_EXT_BIG_ENDIAN  : boolean := false;  -- byte order: true=big-endian, false=little-endian
@@ -60,7 +60,6 @@ architecture rtl of neorv32_mkr_vidor_4000_top is
   -- GPIO
   signal con_gpio_o                   : std_ulogic_vector(63 downto 0);
   signal con_gpio_i                   : std_ulogic_vector(63 downto 0);
-  signal clock_30mhz                  : std_logic;
   -- SPI 
   signal spi_sck                      : std_ulogic;
   signal spi_sdo                      : std_ulogic;
@@ -84,7 +83,6 @@ architecture rtl of neorv32_mkr_vidor_4000_top is
 begin
 
   -- TODO Sync logic for reset to PLL
-  clock_30mhz <= clk_i;
 
   -- NEORV32
   neorv32_top_inst: neorv32_top
@@ -118,20 +116,20 @@ begin
   )
   port map (
     -- Global control --
-    clk_i                       => clock_30mhz,
+    clk_i                       => clk_i,
     rstn_i                      => rstn_i,
     -- Wishbone bus interface (available if MEM_EXT_EN = true) --
-    wb_tag_o                    => wb_tag_o,
-    wb_adr_o                    => wb_adr_o,
-    wb_dat_i                    => wb_dat_i,
-    wb_dat_o                    => wb_dat_o,
-    wb_we_o                     => wb_we_o,
-    wb_sel_o                    => wb_sel_o,
-    wb_stb_o                    => wb_stb_o,
-    wb_cyc_o                    => wb_cyc_o,
-    wb_lock_o                   => wb_lock_o,
-    wb_ack_i                    => wb_ack_i,
-    wb_err_i                    => wb_err_i,
+    --wb_tag_o                    => wb_tag_o,
+    --wb_adr_o                    => wb_adr_o,
+    --wb_dat_i                    => wb_dat_i,
+    --wb_dat_o                    => wb_dat_o,
+    --wb_we_o                     => wb_we_o,
+    --wb_sel_o                    => wb_sel_o,
+    --wb_stb_o                    => wb_stb_o,
+    --wb_cyc_o                    => wb_cyc_o,
+    --wb_lock_o                   => wb_lock_o,
+    --wb_ack_i                    => wb_ack_i,
+    --wb_err_i                    => wb_err_i,
     -- GPIO
     gpio_o                      => con_gpio_o,
     gpio_i                      => con_gpio_i,
