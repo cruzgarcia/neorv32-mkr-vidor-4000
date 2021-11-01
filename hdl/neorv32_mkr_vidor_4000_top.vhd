@@ -6,6 +6,8 @@ use ieee.std_logic_unsigned.all;
 library neorv32;
 use neorv32.neorv32_package.all;
 
+library sdram_controller;
+
 entity neorv32_mkr_vidor_4000_top is
   generic (
     CLOCK_FREQUENCY     : natural := 48_000_000;  -- clock frequency of clk_i in Hz
@@ -14,9 +16,9 @@ entity neorv32_mkr_vidor_4000_top is
     MEM_INT_IMEM_SIZE   : natural := 32*1024;  -- size of processor-internal instruction memory in bytes
     MEM_INT_DMEM_SIZE   : natural := 8*1024;    -- size of processor-internal data memory in bytes
     -- External memory interface (WISHBONE)
-    MEM_EXT_EN          : boolean := FALSE;   -- implement external memory bus interface?
+    MEM_EXT_EN          : boolean := TRUE;   -- implement external memory bus interface?
     MEM_EXT_TIMEOUT     : natural := 255;    -- cycles after a pending bus access auto-terminates (0 = disabled)
-    MEM_EXT_PIPE_MODE   : boolean := false;  -- protocol: false=classic/standard wishbone mode, true=pipelined wishbone mode
+    MEM_EXT_PIPE_MODE   : boolean := FALSE;  -- protocol: false=classic/standard wishbone mode, true=pipelined wishbone mode
     MEM_EXT_BIG_ENDIAN  : boolean := false;  -- byte order: true=big-endian, false=little-endian
     MEM_EXT_ASYNC_RX    : boolean := false;  -- use register buffer for RX data when false    
     --
@@ -37,7 +39,18 @@ entity neorv32_mkr_vidor_4000_top is
     flash_so            : out std_logic;
     flash_si            : in  std_logic;
     flash_i02           : out std_logic;
-    flash_i03           : out std_logic
+    flash_i03           : out std_logic;
+    -- SDRAM
+    o_sdram_addr        : out   std_logic_vector(11 downto 0);                    -- addr
+    o_sdram_ba          : out   std_logic_vector(1 downto 0);                     -- ba
+    o_sdram_cas_n       : out   std_logic;                                        -- cas_n
+    o_sdram_clk         : out   std_logic;
+    o_sdram_cke         : out   std_logic;                                        -- cke
+    o_sdram_cs_n        : out   std_logic;                                        -- cs_n
+    io_sdram_dq         : inout std_logic_vector(15 downto 0) := (others => 'X'); -- dq
+    o_sdram_dqm         : out   std_logic_vector(1 downto 0);                     -- dqm
+    o_sdram_ras_n       : out   std_logic;                                        -- ras_n
+    o_sdram_we_n        : out   std_logic                                         -- we_n
   );
 end entity;
 
@@ -57,6 +70,16 @@ architecture rtl of neorv32_mkr_vidor_4000_top is
   signal wb_lock_o                    : std_ulogic;
   signal wb_ack_i                     : std_ulogic := 'L';
   signal wb_err_i                     : std_ulogic := 'L';
+  -- Avalon to SDRAM
+  SIGNAL s_avl_sdram_read             : std_logic;
+  SIGNAL s_avl_sdram_write            : std_logic;
+  SIGNAL s_avl_sdram_waitrequest      : std_logic := '0';
+  SIGNAL s_avl_sdram_byteenable       : std_logic_vector(3 downto 0);
+  SIGNAL s_avl_sdram_address          : std_logic_vector(31 downto 0);
+  SIGNAL s_avl_sdram_writedata        : std_logic_vector(31 downto 0);
+  SIGNAL s_avl_sdram_readdata         : std_logic_vector(31 downto 0) := (others => '0');
+  SIGNAL s_avl_sdram_readdatavalid    : STD_LOGIC;
+  SIGNAL s_avl_sdram_burstcount       : STD_LOGIC_VECTOR(0 downto 0);
   -- GPIO
   signal con_gpio_o                   : std_ulogic_vector(63 downto 0);
   signal con_gpio_i                   : std_ulogic_vector(63 downto 0);
@@ -65,22 +88,37 @@ architecture rtl of neorv32_mkr_vidor_4000_top is
   signal spi_sdo                      : std_ulogic;
   signal spi_sdi                      : std_ulogic;
   signal spi_csn                      : std_ulogic_vector(7 downto 0);
-  -- SDRAM
-  SIGNAL s_sdrc_selfrefresh           : STD_LOGIC := '0';
-  SIGNAL s_sdrc_power_down            : STD_LOGIC := '0';
-  SIGNAL s_sdrc_init_done             : STD_LOGIC := '0';
-  SIGNAL s_sdrc_wr_n                  : STD_LOGIC := '0';
-  SIGNAL s_sdrc_rd_n                  : STD_LOGIC := '0';
-  SIGNAL s_sdrc_addr                  : STD_LOGIC_VECTOR(20 DOWNTO 0) := (OTHERS => '0');
-  SIGNAL s_sdrc_data_len              : STD_LOGIC_VECTOR( 6 DOWNTO 0) := (OTHERS => '0');
-  SIGNAL s_sdrc_dqm                   : STD_LOGIC_VECTOR( 3 DOWNTO 0) := (OTHERS => '0');
-  SIGNAL s_sdrc_data_i                : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
-  SIGNAL s_sdrc_data_o                : STD_LOGIC_VECTOR(31 DOWNTO 0) := (OTHERS => '0');
-  SIGNAL s_sdrc_busy_n                : STD_LOGIC := '0';
-  SIGNAL s_sdrc_rd_valid              : STD_LOGIC := '0';
-  SIGNAL s_sdrc_wrd_ack               : STD_LOGIC := '0';
+
+  component sdram_controller is
+		port (
+			clk_clk                    : in    std_logic                     := 'X';             -- clk
+			reset_reset_n              : in    std_logic                     := 'X';             -- reset_n
+			io_sdram_addr              : out   std_logic_vector(11 downto 0);                    -- addr
+			io_sdram_ba                : out   std_logic_vector(1 downto 0);                     -- ba
+			io_sdram_cas_n             : out   std_logic;                                        -- cas_n
+			io_sdram_cke               : out   std_logic;                                        -- cke
+			io_sdram_cs_n              : out   std_logic;                                        -- cs_n
+			io_sdram_dq                : inout std_logic_vector(15 downto 0) := (others => 'X'); -- dq
+			io_sdram_dqm               : out   std_logic_vector(1 downto 0);                     -- dqm
+			io_sdram_ras_n             : out   std_logic;                                        -- ras_n
+			io_sdram_we_n              : out   std_logic;                                        -- we_n
+			io_avl_sdram_waitrequest   : out   std_logic;                                        -- waitrequest
+			io_avl_sdram_readdata      : out   std_logic_vector(31 downto 0);                    -- readdata
+			io_avl_sdram_readdatavalid : out   std_logic;                                        -- readdatavalid
+			io_avl_sdram_burstcount    : in    std_logic_vector(0 downto 0)  := (others => 'X'); -- burstcount
+			io_avl_sdram_writedata     : in    std_logic_vector(31 downto 0) := (others => 'X'); -- writedata
+			io_avl_sdram_address       : in    std_logic_vector(31 downto 0) := (others => 'X'); -- address
+			io_avl_sdram_write         : in    std_logic                     := 'X';             -- write
+			io_avl_sdram_read          : in    std_logic                     := 'X';             -- read
+			io_avl_sdram_byteenable    : in    std_logic_vector(3 downto 0)  := (others => 'X'); -- byteenable
+			io_avl_sdram_debugaccess   : in    std_logic                     := 'X'              -- debugaccess
+		);
+	end component sdram_controller;
 
 begin
+
+  -- TODO Use a PLL?
+  o_sdram_clk   <= clk_i;
 
   -- TODO Sync logic for reset to PLL
 
@@ -118,18 +156,18 @@ begin
     -- Global control --
     clk_i                       => clk_i,
     rstn_i                      => rstn_i,
-    -- Wishbone bus interface (available if MEM_EXT_EN = true) --
-    --wb_tag_o                    => wb_tag_o,
-    --wb_adr_o                    => wb_adr_o,
-    --wb_dat_i                    => wb_dat_i,
-    --wb_dat_o                    => wb_dat_o,
-    --wb_we_o                     => wb_we_o,
-    --wb_sel_o                    => wb_sel_o,
-    --wb_stb_o                    => wb_stb_o,
-    --wb_cyc_o                    => wb_cyc_o,
-    --wb_lock_o                   => wb_lock_o,
-    --wb_ack_i                    => wb_ack_i,
-    --wb_err_i                    => wb_err_i,
+    -- Wishbone bus interface (available if MEM_EXT_EN = true)
+    wb_tag_o                    => wb_tag_o,
+    wb_adr_o                    => wb_adr_o,
+    wb_dat_i                    => wb_dat_i,
+    wb_dat_o                    => wb_dat_o,
+    wb_we_o                     => wb_we_o,
+    wb_sel_o                    => wb_sel_o,
+    wb_stb_o                    => wb_stb_o,
+    wb_cyc_o                    => wb_cyc_o,
+    wb_lock_o                   => wb_lock_o,
+    wb_ack_i                    => wb_ack_i,
+    wb_err_i                    => wb_err_i,
     -- GPIO
     gpio_o                      => con_gpio_o,
     gpio_i                      => con_gpio_i,
@@ -159,6 +197,56 @@ begin
       when others => spi_sdi <= '1';
     end case;
   end process;
+
+  -- Wishbone to Avalon MM
+  s_avl_sdram_read        <= '1' when (wb_stb_o = '1' and wb_we_o = '0') else '0';
+  s_avl_sdram_write       <= '1' when (wb_stb_o = '1' and wb_we_o = '1') else '0';
+  s_avl_sdram_address     <= STD_LOGIC_VECTOR(wb_adr_o);
+  s_avl_sdram_writedata   <= STD_LOGIC_VECTOR(wb_dat_o);
+  s_avl_sdram_byteenable  <= STD_LOGIC_VECTOR(wb_sel_o);
+  -- Avalon MM to Wishbone
+  wb_dat_i                <= std_ulogic_vector(s_avl_sdram_readdata);
+  wb_err_i                <= '0';
+  
+  proc_ack : PROCESS(wb_stb_o, wb_we_o, s_avl_sdram_waitrequest, s_avl_sdram_readdatavalid)
+  BEGIN
+    IF (wb_stb_o = '1' AND wb_we_o = '1') THEN
+      -- Write request
+      wb_ack_i            <= s_avl_sdram_waitrequest;
+    ELSIF(wb_stb_o = '1' AND wb_we_o = '0') THEN
+      wb_ack_i            <= s_avl_sdram_readdatavalid;
+    ELSE
+      wb_ack_i            <= '0';
+    END IF;
+  END PROCESS;
+
+  inst_sdram : sdram_controller
+  port map (
+    clk_clk                    => clk_i,
+    reset_reset_n              => rstn_i,
+    --
+    io_avl_sdram_waitrequest   => s_avl_sdram_waitrequest,
+    io_avl_sdram_readdata      => s_avl_sdram_readdata,
+    io_avl_sdram_readdatavalid => s_avl_sdram_readdatavalid,
+    io_avl_sdram_burstcount    => s_avl_sdram_burstcount,
+    io_avl_sdram_writedata     => s_avl_sdram_writedata,
+    io_avl_sdram_address       => s_avl_sdram_address,
+    io_avl_sdram_write         => s_avl_sdram_write,
+    io_avl_sdram_read          => s_avl_sdram_read,
+    io_avl_sdram_byteenable    => s_avl_sdram_byteenable,
+    --
+    io_sdram_addr              => o_sdram_addr,
+    io_sdram_ba                => o_sdram_ba,
+    io_sdram_cas_n             => o_sdram_cas_n,
+    io_sdram_cke               => o_sdram_cke,
+    io_sdram_cs_n              => o_sdram_cs_n,
+    io_sdram_dq                => io_sdram_dq,
+    io_sdram_dqm               => o_sdram_dqm,
+    io_sdram_ras_n             => o_sdram_ras_n,
+    io_sdram_we_n              => o_sdram_we_n
+  );
+
+  s_avl_sdram_burstcount <= "1";
 
   --=======================================================
 end architecture;
