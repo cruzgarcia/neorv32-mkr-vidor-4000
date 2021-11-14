@@ -14,13 +14,15 @@ entity neorv32_mkr_vidor_4000_top is
     -- Internal Instruction memory (IMEM) --
     MEM_INT_IMEM_EN     : boolean := TRUE;     -- implement processor-internal instruction memory
     MEM_INT_IMEM_SIZE   : natural := 32*1024;  -- size of processor-internal instruction memory in bytes
-    MEM_INT_DMEM_SIZE   : natural := 8*1024;    -- size of processor-internal data memory in bytes
+    --
+    MEM_INT_DMEM_EN     : boolean := TRUE;    -- implement processor-internal data memory
+    MEM_INT_DMEM_SIZE   : natural := 8*1024;   -- size of processor-internal data memory in bytes
     -- External memory interface (WISHBONE)
     MEM_EXT_EN          : boolean := TRUE;   -- implement external memory bus interface?
     MEM_EXT_TIMEOUT     : natural := 255;    -- cycles after a pending bus access auto-terminates (0 = disabled)
     MEM_EXT_PIPE_MODE   : boolean := FALSE;  -- protocol: false=classic/standard wishbone mode, true=pipelined wishbone mode
-    MEM_EXT_BIG_ENDIAN  : boolean := false;  -- byte order: true=big-endian, false=little-endian
-    MEM_EXT_ASYNC_RX    : boolean := false;  -- use register buffer for RX data when false    
+    MEM_EXT_BIG_ENDIAN  : boolean := FALSE;  -- byte order: true=big-endian, false=little-endian
+    MEM_EXT_ASYNC_RX    : boolean := FALSE;  -- use register buffer for RX data when false    
     --
     IO_SPI_EN           : boolean := true       -- implement serial peripheral interface (SPI)?
   );
@@ -70,6 +72,7 @@ architecture rtl of neorv32_mkr_vidor_4000_top is
   signal wb_lock_o                    : std_ulogic;
   signal wb_ack_i                     : std_ulogic := 'L';
   signal wb_err_i                     : std_ulogic := 'L';
+  SIGNAL wb_stb_reg                   : STD_LOGIC  := '0';
   -- Avalon to SDRAM
   SIGNAL s_avl_sdram_read             : std_logic;
   SIGNAL s_avl_sdram_write            : std_logic;
@@ -136,7 +139,7 @@ begin
     MEM_INT_IMEM_EN              => MEM_INT_IMEM_EN,   -- implement processor-internal instruction memory
     MEM_INT_IMEM_SIZE            => MEM_INT_IMEM_SIZE, -- size of processor-internal instruction memory in bytes
     -- Internal Data memory --
-    MEM_INT_DMEM_EN              => true,              -- implement processor-internal data memory
+    MEM_INT_DMEM_EN              => MEM_INT_DMEM_EN,   -- implement processor-internal data memory
     MEM_INT_DMEM_SIZE            => MEM_INT_DMEM_SIZE, -- size of processor-internal data memory in bytes
     --
     MEM_EXT_EN                   => MEM_EXT_EN,
@@ -199,7 +202,7 @@ begin
   end process;
 
   -- Wishbone to Avalon MM
-  s_avl_sdram_read        <= '1' when (wb_stb_o = '1' and wb_we_o = '0') else '0';
+  s_avl_sdram_read        <= '1' when (wb_stb_o = '1' and wb_stb_reg = '0' AND wb_we_o = '0') else '0';
   s_avl_sdram_write       <= '1' when (wb_stb_o = '1' and wb_we_o = '1') else '0';
   s_avl_sdram_address     <= STD_LOGIC_VECTOR(wb_adr_o);
   s_avl_sdram_writedata   <= STD_LOGIC_VECTOR(wb_dat_o);
@@ -208,6 +211,15 @@ begin
   wb_dat_i                <= std_ulogic_vector(s_avl_sdram_readdata);
   wb_err_i                <= '0';
   
+  proc_wb_stb : PROCESS(rstn_i, clk_i)
+  BEGIN
+    IF( rstn_i = '0' ) THEN
+      wb_stb_reg        <= '0';
+    ELSIF RISING_EDGE(clk_i) THEN
+      wb_stb_reg        <= wb_stb_o;
+    END IF;
+  END PROCESS;
+
   proc_ack : PROCESS(wb_stb_o, wb_we_o, s_avl_sdram_waitrequest, s_avl_sdram_readdatavalid)
   BEGIN
     IF (wb_stb_o = '1' AND wb_we_o = '1') THEN
